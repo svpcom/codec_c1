@@ -7,12 +7,18 @@ CC=gcc
 AR=ar
 endif
 
-TARGET= libvpcodec.so
+TARGET= libvpcodec.a
  
-CODEOBJECT = AML_HWEncoder.o enc_api.o rate_control_m8_fast.o m8venclib_fast.o
+CODEOBJECT = AML_HWEncoder.o enc_api.o rate_control_m8_fast.o m8venclib_fast.o libvpcodec.o
 
-libvpcodec.so: $(CODEOBJECT)
-	$(CC) $(CFLAGS) $(CODEOBJECT) -o $(TARGET)
+#libvpcodec.so: $(CODEOBJECT)
+#	$(CC) $(CFLAGS) $(CODEOBJECT) -o $(TARGET)
+
+libvpcodec.a: $(CODEOBJECT)
+	$(AR) cr libvpcodec.a $(CODEOBJECT)
+
+libvpcodec.o: libvpcodec.cpp
+	$(CC) $(CFLAGS)  -c $<
 
 AML_HWEncoder.o: AML_HWEncoder.cpp include/AML_HWEncoder.h
 	$(CC) $(CFLAGS)  -c $<
@@ -23,7 +29,7 @@ enc_api.o: enc_api.cpp enc_api.h
 #fill_buffer.o: enc/common/fill_buffer.cpp
 #	$(CC) $(CFLAGS)  -c $<
 #
-rate_control_m8_fasth.o: enc/m8_enc_fast/rate_control_m8_fast.cpp enc/m8_enc_fast/rate_control_m8_fast.h
+rate_control_m8_fast.o: enc/m8_enc_fast/rate_control_m8_fast.cpp enc/m8_enc_fast/rate_control_m8_fast.h
 	$(CC) $(CFLAGS)  -c $<
 
 m8venclib_fast.o: enc/m8_enc_fast/m8venclib_fast.cpp enc/m8_enc_fast/m8venclib_fast.h
@@ -61,14 +67,14 @@ LDFLAGS += -lm -lrt
 ifeq ($(ARM), 1)
 CFLAGS+=-DARM
 else
-CFLAGS+=-O2 -std=c99
+CFLAGS+=-DARM -std=c99
 endif
 
 ifeq ($(REAP), 1)
 CFLAGS+=-DREAP_MODE
 endif
 
-CFLAGS+= -g -mfloat-abi=softfp -mfpu=neon -ftree-vectorize -ffast-math -Iinclude -shared
+CFLAGS+= -O2 -Wall -fPIC -mfpu=neon -ftree-vectorize -ffast-math -Iinclude -shared
 
 clean:
 	-rm -f *.o

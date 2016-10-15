@@ -12,6 +12,7 @@
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <log.h>
 
 #include "enc_api.h"
 //#include <cutils/properties.h>
@@ -31,9 +32,7 @@
 #define AMVENC_DEVINFO_G9 "AML-G9"
 #define AMVENC_DEVINFO_GXBB "AML-GXBB"
 #define AMVENC_DEVINFO_GXTVBB "AML-GXTVBB"
-
-#define AMVENC_AVC_IOC_MAGIC  'E'
-#define AMVENC_AVC_IOC_GET_DEVINFO 				_IOW(AMVENC_AVC_IOC_MAGIC, 0xf0, unsigned int)
+#define AMVENC_AVC_IOC_GET_DEVINFO FASTENC_AVC_IOC_GET_DEVINFO
 
 //const AMVencHWFuncPtr gx_fast_dev = {
 //    GxInitFastEncode,
@@ -62,14 +61,14 @@ const AMVencHWFuncPtr m8_fast_dev = {
     UnInitFastEncode,
 };
 //
-//const AMVencHWFuncPtr m8_dev = {
+// const AMVencHWFuncPtr m8_dev = {
 //    InitM8VEncode,
 //    M8VEncodeInitFrame,
 //    M8VEncodeSPS_PPS,
 //    M8VEncodeSlice,
 //    M8VEncodeCommit,
 //    UnInitM8VEncode,
-//};
+// };
 //
 const AMVencRCFuncPtr m8_fast_rc = {
     FastInitRateControlModule,
@@ -79,13 +78,13 @@ const AMVencRCFuncPtr m8_fast_rc = {
     FastCleanupRateControlModule,
 };
 //
-//const AMVencRCFuncPtr m8_rc = {
+// const AMVencRCFuncPtr m8_rc = {
 //    M8InitRateControlModule,
 //    M8RCUpdateBuffer,
 //    M8RCUpdateFrame,
 //    M8RCInitFrameQP,
 //    M8CleanupRateControlModule,
-//};
+// };
 //#endif /* __aarch64__ */
 //
 const AMVencHWFuncPtr *gdev[] = {
@@ -94,7 +93,7 @@ const AMVencHWFuncPtr *gdev[] = {
 //    NULL,
 //#else
     &m8_fast_dev,
-//    &m8_dev,
+//   &m8_dev,
 //#endif
 //    &gx_fast_dev,
     NULL,
@@ -203,23 +202,23 @@ AMVEnc_Status InitAMVEncode(amvenc_hw_t* hw_info, int force_mode)
     memset(dev_info,0,sizeof(dev_info));
 
     hw_info->dev_id = (ENC_DEV_TYPE) 0;
-    //iret = ioctl(fd, AMVENC_AVC_IOC_GET_DEVINFO,&dev_info[0]);
-    //if((iret<0)||(dev_info[0] == 0)){
+    // iret = ioctl(fd, AMVENC_AVC_IOC_GET_DEVINFO,&dev_info[0]);
+    // if((iret<0)||(dev_info[0] == 0)){
     //    //ALOGD("The old encoder driver, not support query the dev info. set as M8 type!");
     //    hw_info->dev_id = M8_FAST;
-    //}else if((strcmp(dev_info, (char *)AMVENC_DEVINFO_M8) == 0)
+    // }else if((strcmp(dev_info, (char *)AMVENC_DEVINFO_M8) == 0)
     //  ||(strcmp(dev_info, (char *)AMVENC_DEVINFO_G9) == 0)){
     //    hw_info->dev_id = M8_FAST;
-    //}else if(strcmp(dev_info, (char *)AMVENC_DEVINFO_GXBB) == 0){
+    // }else if(strcmp(dev_info, (char *)AMVENC_DEVINFO_GXBB) == 0){
     //    hw_info->dev_id = GXBB;
-    //}else if (strcmp(dev_info, (char *)AMVENC_DEVINFO_GXTVBB) == 0){
+    // }else if (strcmp(dev_info, (char *)AMVENC_DEVINFO_GXTVBB) == 0){
     //    hw_info->dev_id = GXBB;
-    //}else{
+    // }else{
     //    hw_info->dev_id = NO_DEFINE;
-    //}
+    // }
 
-    ////ALOGI("hw_info->dev_id %d, %s", hw_info->dev_id, dev_info);
-    //if (hw_info->dev_id == M8_FAST) {
+    // ALOGI("hw_info->dev_id %d, %s", hw_info->dev_id, dev_info);
+    // if (hw_info->dev_id == M8_FAST) {
     //    if((hw_info->init_para.enc_width >= 1280) && (hw_info->init_para.enc_height >= 720))
     //        hw_info->dev_id = M8_FAST;
     //    else
@@ -230,7 +229,7 @@ AMVEnc_Status InitAMVEncode(amvenc_hw_t* hw_info, int force_mode)
     //        hw_info->dev_id = M8;
     //    }
     //    //char prop[PROPERTY_VALUE_MAX];
-    //    int value = 0;
+    //    int value = 1;
     //    //memset(prop,0,sizeof(prop));
     //    //if(property_get("hw.encoder.forcemode", prop, "2") > 0){
     //    //    sscanf(prop,"%d", &value);
@@ -242,11 +241,11 @@ AMVEnc_Status InitAMVEncode(amvenc_hw_t* hw_info, int force_mode)
     //    } else if(2 == value){
     //        hw_info->dev_id = M8;
     //    }
-    //    //ALOGI("hw.encoder.forcemode = %d, dev_id=%d. fd:%d", value, hw_info->dev_id, fd);
-    //}
+    //    ALOGI("hw.encoder.forcemode = %d, dev_id=%d. fd:%d", value, hw_info->dev_id, fd);
+    // }
 
     if((hw_info->dev_id<=NO_DEFINE)||(hw_info->dev_id>=MAX_DEV)){
-        //ALOGD("Not found available hw encoder device, fd:%d", fd);
+        ALOGD("Not found available hw encoder device, fd:%d", fd);
         close(fd);
         return AMVENC_FAIL;
     }

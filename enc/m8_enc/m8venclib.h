@@ -11,6 +11,8 @@
 
 #define M8VENC_AVC_IOC_MAGIC  'E'
 
+
+#define M8ENC_AVC_IOC_GET_DEVINFO 				_IOW(M8ENC_AVC_IOC_MAGIC, 0xf0, unsigned int)
 #define M8VENC_AVC_IOC_GET_ADDR					_IOW(M8VENC_AVC_IOC_MAGIC, 0x00, unsigned int)
 #define M8VENC_AVC_IOC_INPUT_UPDATE				_IOW(M8VENC_AVC_IOC_MAGIC, 0x01, unsigned int)
 #define M8VENC_AVC_IOC_NEW_CMD					_IOW(M8VENC_AVC_IOC_MAGIC, 0x02, unsigned int)
@@ -23,6 +25,8 @@
 #define M8VENC_AVC_IOC_SUBMIT_ENCODE_DONE 		_IOW(M8VENC_AVC_IOC_MAGIC, 0x09, unsigned int)
 #define M8VENC_AVC_IOC_READ_CANVAS 				_IOW(M8VENC_AVC_IOC_MAGIC, 0x0a, unsigned int)
 
+
+    
 #define UCODE_MODE_FULL 0
 #define UCODE_MODE_SW_MIX 1
 

@@ -1,10 +1,10 @@
 #include "vpcodec_1_0.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include <utils/Log.h>
+#include "include/log.h"
 
-#include <AML_HWEncoder.h>
-#include <enc_define.h>
+#include "include/AML_HWEncoder.h"
+#include "include/enc_define.h"
 
 const char version[] = "Amlogic libvpcodec version 1.0";
 
@@ -109,13 +109,14 @@ int vl_video_encoder_encode(vl_codec_handle_t codec_handle, vl_frame_type_t fram
         ret = AML_HWEncNAL(handle, (unsigned char *)*out, (unsigned int *)&in_size/*should be out size*/, &type);
         if (ret == AMVENC_SUCCESS)
         {
+            ALOGD("NAL type: %d, size: %u", type, in_size);
             handle->mSPSPPSDataSize = 0;
             handle->mSPSPPSData = (uint8_t *)malloc(in_size);
             if (handle->mSPSPPSData)
             {
                 handle->mSPSPPSDataSize = in_size;
                 memcpy(handle->mSPSPPSData, (unsigned char *)*out, handle->mSPSPPSDataSize);
-                ALOGI("get mSPSPPSData size= %d at line %d \n", handle->mSPSPPSDataSize, __LINE__);
+                ALOGI("get mSPSPPSData size= %d at line %d", handle->mSPSPPSDataSize, __LINE__);
             }
             handle->mNumInputFrames = 0;
             handle->mSpsPpsHeaderReceived = true;
@@ -137,7 +138,7 @@ int vl_video_encoder_encode(vl_codec_handle_t codec_handle, vl_frame_type_t fram
         videoInput.frame_rate = handle->mEncParams.frame_rate / 1000;
         videoInput.coding_timestamp = handle->mNumInputFrames * 1000 / videoInput.frame_rate;  // in ms
         videoInput.fmt = AMVENC_NV21;
-        videoInput.YCbCr[0] = (unsigned)in;
+        videoInput.YCbCr[0] = (unsigned long)in;
         videoInput.YCbCr[1] = (unsigned)(videoInput.YCbCr[0] + videoInput.height * videoInput.pitch);
         videoInput.YCbCr[2] = 0;
         videoInput.canvas = 0xffffffff;
@@ -174,13 +175,14 @@ int vl_video_encoder_encode(vl_codec_handle_t codec_handle, vl_frame_type_t fram
         ret = AML_HWEncNAL(handle, (unsigned char *)outPtr, (unsigned int *)&dataLength, &type);
         if (ret == AMVENC_PICTURE_READY)
         {
+            ALOGD("NAL type: %d, size: %u", type, dataLength);
             if (type == AVC_NALTYPE_IDR)
             {
                 if (handle->mSPSPPSData)
                 {
                     memcpy((uint8_t *) *out, handle->mSPSPPSData, handle->mSPSPPSDataSize);
                     dataLength += handle->mSPSPPSDataSize;
-                    ALOGI("copy mSPSPPSData to buffer size= %d at line %d \n", handle->mSPSPPSDataSize, __LINE__);
+                    ALOGI("copy mSPSPPSData to buffer size= %d at line %d", handle->mSPSPPSDataSize, __LINE__);
                 }
             }
         }

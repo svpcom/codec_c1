@@ -1,7 +1,7 @@
 
 //#define LOG_NDEBUG 0
 #define LOG_TAG "AMLVENC"
-//#include <utils/Log.h>
+#include <log.h>
 
 #include <stdio.h>
 #include <sys/ioctl.h>
@@ -216,7 +216,7 @@ AMVEnc_Status AML_HWEncInitialize(AMVEncHandle *Handle, AMVEncParams *encParam, 
         info->state = AMVEnc_Analyzing_Frame;
     Handle->object = (void *)info;
     *has_mix = (info->hw_info.dev_id == M8)?true:false;
-    //ALOGD("AML_HWEncInitialize success, handle: %p, fd:%d",Handle, info->hw_info.dev_fd);
+    ALOGD("AML_HWEncInitialize success, handle: %p, fd:%d",Handle, info->hw_info.dev_fd);
     return AMVENC_SUCCESS;
 exit:
     if(info){
@@ -224,7 +224,7 @@ exit:
         UnInitAMVEncode(&info->hw_info);
         free(info);
     }
-    //ALOGE("AML_HWEncInitialize Fail, error=%d. handle: %p",status,Handle);
+    ALOGE("AML_HWEncInitialize Fail, error=%d. handle: %p",status,Handle);
     return status;
 }
 
@@ -306,7 +306,7 @@ AMVEnc_Status AML_HWEncNAL(AMVEncHandle *Handle, unsigned char *buffer, unsigned
     int datalen = 0;
 
     if (info == NULL){
-        //ALOGE("AML_HWEncNAL Fail: UNINITIALIZED. handle: %p", Handle);
+        ALOGE("AML_HWEncNAL Fail: UNINITIALIZED. handle: %p", Handle);
         return AMVENC_UNINITIALIZED;
     }
 
