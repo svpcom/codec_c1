@@ -15,6 +15,8 @@
 #define RC_MAX_QUANT 28
 #define RC_MIN_QUANT 1   //cap to 10 to prevent rate fluctuation
 
+#define NO_REENCODE
+
 #define INDENPENT_QP_INTERVAL  // use this to set indenpent qp interval for P frame
 #ifdef INDENPENT_QP_INTERVAL
 	#define P_RC_MAX_QUANT 26
@@ -177,8 +179,6 @@ static void updateRateControl(FastEncRateControl *rateCtrl, bool IDR)
     int median_quant;
     rateCtrl->encoded_frames++;
     /**scene detact**/
-    rateCtrl->reencode = false;
-    rateCtrl->next_IDR = false;
     rateCtrl->skip_next_frame = 0;
     median_quant = RC_MIN_QUANT + (rateCtrl->max_idr_qp - RC_MIN_QUANT) / 2;
     //ALOGV("rateCtrl->last_IDR_bits:%d,last_pframe_bits:%d,current:%d,QP:%d",rateCtrl->last_IDR_bits,rateCtrl->last_pframe_bits,rateCtrl->Rc,rateCtrl->Qc);
@@ -192,20 +192,6 @@ static void updateRateControl(FastEncRateControl *rateCtrl, bool IDR)
         idr_ratio = (float)((float)rateCtrl->bitsPerFrame/(float)old_bitsPerFrame);
         rateCtrl->last_IDR_bits = (int)(rateCtrl->last_IDR_bits*idr_ratio);
         rateCtrl->refresh = false;
-    }
-    if(!IDR && rateCtrl->Rc > 1.2 * rateCtrl->last_IDR_bits){
-        targetBitCalculation(rateCtrl, true);
-        if(rateCtrl->Qc < median_quant + 5){ //to avoid the qp for idr is too samll
-            rateCtrl->Qc += 5;
-        }
-        rateCtrl->Qc = AVC_MIN(rateCtrl->Qc,rateCtrl->max_idr_qp);
-        rateCtrl->actual_quant = (double)rateCtrl->Qc;
-        rateCtrl->reencode = true;
-        rateCtrl->reencode_cnt++;
-        //ALOGV("rateCtrl Reencode:%d,ratio:%f",rateCtrl->reencode_cnt,(double)rateCtrl->reencode_cnt / rateCtrl->encoded_frames);
-        return;
-    }else{
-        rateCtrl->next_IDR = false;
     }
 
     /** calculate average rate**/
@@ -233,7 +219,7 @@ static void updateRateControl(FastEncRateControl *rateCtrl, bool IDR)
     }else{
         rateCtrl->last_pframe_bits = rateCtrl->Rc;
     }
-    encode_frames = rateCtrl->encoded_frames - rateCtrl->reencode_cnt;
+    encode_frames = rateCtrl->encoded_frames;
     rateCtrl->buffer_fullness += rateCtrl->Rc - rateCtrl->bitsPerFrame;
     threshold = rateCtrl->bitsPerFrame * encode_frames * 0.05;
     //ALOGV("frame:%d :rateCtrl->bitsPerFrame:%d,current_bits:%d",encode_frames,rateCtrl->bitsPerFrame,rateCtrl->Rc);
@@ -287,10 +273,6 @@ AMVEnc_Status FastRCUpdateFrame(void *dev, void *rc, bool IDR, int* skip_num, in
         if (rateCtrl->skip_next_frame == -1){ // skip current frame
             status = AMVENC_SKIPPED_PICTURE;
             *skip_num = rateCtrl->skip_next_frame;
-        }else if (rateCtrl->reencode == true){
-            p->reencode = true;
-            p->quant = rateCtrl->Qc;
-            status = AMVENC_REENCODE_PICTURE;
         }
     }
     //ALOGV("Qp:%d",p->quant);
@@ -366,9 +348,9 @@ void* FastInitRateControlModule(amvenc_initpara_t* init_para)
     //    if(qp<=51)
     //        rateCtrl->max_idr_qp = qp;
     //    else
-            rateCtrl->max_idr_qp = RC_MAX_QUANT;
+    //        rateCtrl->max_idr_qp = RC_MAX_QUANT;
     //}else{
-    //    rateCtrl->max_idr_qp = RC_MAX_QUANT;
+        rateCtrl->max_idr_qp = RC_MAX_QUANT;
     //}
     //qp = 0;
     //memset(qp_str,0,sizeof(qp_str));
@@ -377,9 +359,9 @@ void* FastInitRateControlModule(amvenc_initpara_t* init_para)
     //    if(qp<=51)
     //        rateCtrl->max_p_qp = qp;
     //    else
-            rateCtrl->max_p_qp = P_RC_MAX_QUANT;
+    //        rateCtrl->max_p_qp = P_RC_MAX_QUANT;
     //}else{
-    //    rateCtrl->max_p_qp = P_RC_MAX_QUANT;
+        rateCtrl->max_p_qp = P_RC_MAX_QUANT;
     //}
     //qp = 0;
     //memset(qp_str,0,sizeof(qp_str));
@@ -387,11 +369,11 @@ void* FastInitRateControlModule(amvenc_initpara_t* init_para)
     //if(property_get("ro.amlenc.qpstep.MaxInc", qp_str, NULL) > 0){
     //    sscanf(qp_str,"%d",&qp);
     //    if((qp<=0)||(qp>=51))
-            rateCtrl->max_inc_qp_step = 0;
+    //        rateCtrl->max_inc_qp_step = 0;
     //    else
     //        rateCtrl->max_inc_qp_step = qp;
     //}else{
-    //    rateCtrl->max_inc_qp_step = 0;
+        rateCtrl->max_inc_qp_step = 0;
     //}
     //qp = 0;
     //memset(qp_str,0,sizeof(qp_str));
@@ -399,11 +381,11 @@ void* FastInitRateControlModule(amvenc_initpara_t* init_para)
     //if(property_get("ro.amlenc.qpstep.MaxDec", qp_str, NULL) > 0){
     //    sscanf(qp_str,"%d",&qp);
     //    if((qp<0)||(qp>=51))
-            rateCtrl->max_dec_qp_step = 3;
+    //        rateCtrl->max_dec_qp_step = 3;
     //    else
     //        rateCtrl->max_dec_qp_step = qp;
     //}else{
-    //    rateCtrl->max_dec_qp_step = 3;
+        rateCtrl->max_dec_qp_step = 3;
     //}
 
     //ALOGV("Max I frame qp: %d, Max P frame qp, %d, MaxInc qp step:%d, dec step:%d",rateCtrl->max_idr_qp,rateCtrl->max_p_qp,rateCtrl->max_inc_qp_step,rateCtrl->max_dec_qp_step);
@@ -422,9 +404,6 @@ void* FastInitRateControlModule(amvenc_initpara_t* init_para)
         rateCtrl->reaction_delta = 1.0 / 5; // this value can change later
         rateCtrl->reaction_ratio = 4;//according to paper,may change later;
         rateCtrl->actual_quant = (double)rateCtrl->Qc;
-        rateCtrl->next_IDR = false;
-        rateCtrl->reencode = false;
-        rateCtrl->reencode_cnt = 0;
         rateCtrl->actual_Qstep = QP2Qstep(rateCtrl->Qc);
         rateCtrl->last_pframe_bits = 0x7fffffff;
         rateCtrl->buffer_fullness = 0;

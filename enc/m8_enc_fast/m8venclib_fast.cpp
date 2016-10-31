@@ -22,6 +22,7 @@
 
 #include "m8venclib_fast.h"
 #include "enc_define.h"
+#include "parser.h"
 //#include <cutils/properties.h>
 
 #define ENCODE_DONE_TIMEOUT 100
@@ -36,6 +37,80 @@ static int encode_poll(int fd, int timeout)
     poll_fd[0].fd = fd;
     poll_fd[0].events = POLLIN |POLLERR;
     return poll(poll_fd, 1, timeout);
+}
+
+static void rgb32to24(const uint8_t *src, uint8_t *dst, int src_size)
+{
+    int i;
+    int num_pixels = src_size >> 2;
+    for (i=0; i<num_pixels; i++) {
+        *dst ++ = *src ++;
+        *dst ++ = *src ++;
+        *dst ++ = *src ++;
+        src++;
+    }
+}
+
+static int RGBA32_To_RGB24Canvas(fast_enc_drv_t* p)
+{
+    unsigned char* src = NULL;
+    unsigned char* dst = NULL;
+    bool crop_flag = false;
+    uint32_t offset = 0;
+    int bytes_per_line = p->src.pix_width*4;
+    int canvas_w = (((p->src.pix_width*3)+31)>>5)<<5;
+    int mb_h = p->src.mb_height<<4;
+    int i;
+    if(p->src.pix_height<(p->src.mb_height<<4))
+        crop_flag = true;
+    src = (unsigned char*)p->src.plane[0];
+    dst = p->input_buf.addr;
+    if(canvas_w != (p->src.pix_width*3)){
+        for(i =0; i<p->src.pix_height; i++){
+            rgb32to24(src, dst,bytes_per_line);
+            dst+=canvas_w;
+            src+=bytes_per_line;
+        }
+    }else{
+        rgb32to24(src, dst, bytes_per_line*p->src.pix_height);
+    }
+    offset = p->src.pix_height*canvas_w;
+
+    if(crop_flag)
+        memset(p->input_buf.addr+offset, 0, (mb_h -p->src.pix_height)*canvas_w);
+
+    return canvas_w*mb_h;
+}
+
+static int RGB24_To_RGB24Canvas(fast_enc_drv_t* p)
+{
+    unsigned char* src = NULL;
+    unsigned char* dst = NULL;
+    bool crop_flag = false;
+    uint32_t offset = 0;
+    int bytes_per_line = p->src.pix_width*3;
+    int canvas_w = ((bytes_per_line+31)>>5)<<5;
+    int mb_h = p->src.mb_height<<4;
+    int i;
+    if(p->src.pix_height<(p->src.mb_height<<4))
+        crop_flag = true;
+    src = (unsigned char*)p->src.plane[0];
+    dst = p->input_buf.addr;
+    if(bytes_per_line !=canvas_w){
+        for(i =0; i<p->src.pix_height; i++){
+            memcpy(dst, src,bytes_per_line);
+            dst+=canvas_w;
+            src+=bytes_per_line;
+        }
+    }else{
+        memcpy(dst, src,bytes_per_line*p->src.pix_height);
+    }
+    offset = p->src.pix_height*canvas_w;
+
+    if(crop_flag)
+        memset(p->input_buf.addr+offset, 0, (mb_h -p->src.pix_height)*canvas_w);
+
+    return canvas_w*mb_h;
 }
 
 static int RGBX32_To_RGB24Plane_NEON(unsigned char *src, unsigned char *dest, int width, int height)
@@ -236,12 +311,18 @@ static int set_input(fast_enc_drv_t* p, ulong *yuv, uint32_t enc_width, uint32_t
         if((src->fmt != AMVENC_RGB888)&&(src->fmt != AMVENC_RGBA8888)){
             src->framesize = copy_to_local(p);
         }else if(p->src.fmt == AMVENC_RGB888){
-            src->framesize= RGB24_To_RGB24Plane_NEON((unsigned char*)p->src.plane[0],p->input_buf.addr,p->src.pix_width,p->src.pix_height);
-            src->fmt = AMVENC_RGB888_PLANE;
+            src->framesize = RGB24_To_RGB24Canvas(p);
         }else if(p->src.fmt == AMVENC_RGBA8888){
-            src->framesize = RGBX32_To_RGB24Plane_NEON((unsigned char*)p->src.plane[0],p->input_buf.addr,p->src.pix_width,p->src.pix_height);
-            src->fmt = AMVENC_RGB888_PLANE;
+            src->framesize = RGBA32_To_RGB24Canvas(p);
+            src->fmt = AMVENC_RGB888;
         }
+        // }else if(p->src.fmt == AMVENC_RGB888){
+        //     src->framesize= RGB24_To_RGB24Plane_NEON((unsigned char*)p->src.plane[0],p->input_buf.addr,p->src.pix_width,p->src.pix_height);
+        //     src->fmt = AMVENC_RGB888_PLANE;
+        // }else if(p->src.fmt == AMVENC_RGBA8888){
+        //     src->framesize = RGBX32_To_RGB24Plane_NEON((unsigned char*)p->src.plane[0],p->input_buf.addr,p->src.pix_width,p->src.pix_height);
+        //     src->fmt = AMVENC_RGB888_PLANE;
+        // }
     }else{
         src->framesize = src->mb_height*src->pix_width*24;
     }
@@ -252,8 +333,8 @@ static AMVEnc_Status start_ime(fast_enc_drv_t* p, unsigned char* outptr,int* dat
 {
     AMVEnc_Status ret = AMVENC_FAIL;
     uint32_t status;
-    uint32_t size = 0;
-    uint32_t control_info[9];
+    uint32_t result[4];
+    uint32_t control_info[10];
     uint32_t total_time = 0;
 
     if(p->logtime)
@@ -267,7 +348,9 @@ static AMVEnc_Status start_ime(fast_enc_drv_t* p, unsigned char* outptr,int* dat
     control_info[5] = p->src.framesize;
     control_info[6] = (p->fix_qp >= 0)?p->fix_qp:p->quant;
     control_info[7] = AMVENC_FLUSH_FLAG_INPUT|AMVENC_FLUSH_FLAG_OUTPUT; // flush op;
+    control_info[7] |=  AMVENC_FLUSH_FLAG_INTER_INFO;
     control_info[8] = ENCODE_DONE_TIMEOUT; // timeout op;
+    control_info[9] = p->nr_mode; // nr mode 0: disable 1: snr 2: tnr  2: 3dnr
     ioctl(p->fd, FASTENC_AVC_IOC_NEW_CMD, &control_info[0]);
 
     if(encode_poll(p->fd, -1)<=0){
@@ -278,26 +361,30 @@ static AMVEnc_Status start_ime(fast_enc_drv_t* p, unsigned char* outptr,int* dat
     ioctl(p->fd, FASTENC_AVC_IOC_GET_STAGE, &status);
     ret = AMVENC_FAIL;
     if(status == ENCODER_IDR_DONE){
-        ioctl(p->fd, FASTENC_AVC_IOC_GET_OUTPUT_SIZE, &size);
-        if((size < p->output_buf.size)&&(size>0)){
-            memcpy(outptr,p->output_buf.addr,size);
-            *datalen  = size;
+        ioctl(p->fd, FASTENC_AVC_IOC_GET_OUTPUT_SIZE, &result[0]);
+        if((result[0] < p->output_buf.size)&&(result[0]>0)){
+            memcpy(outptr,p->output_buf.addr,result[0]);
+            *datalen  = result[0];
+            p->me_weight = result[1];
+            p->i4_weight = result[2];
+            p->i16_weight = result[3];
+            Parser_DumpInfo(p);
             ret = AMVENC_PICTURE_READY;
-            //ALOGV("start_ime: done size: %d, fd:%d ",size, p->fd);
+            //ALOGV("start_ime: done size: %d, fd:%d ", result[0], p->fd);
         }
     }else{
         //ALOGE("start_ime: encode timeout, status:%d, fd:%d",status, p->fd);
         ret = AMVENC_TIMEOUT;
     }
     if(ret == AMVENC_PICTURE_READY){
+        p->total_encode_frame++;
         if(p->logtime){
             gettimeofday(&p->end_test, NULL);
             total_time = p->end_test.tv_sec - p->start_test.tv_sec;
             total_time = total_time*1000000 + p->end_test.tv_usec -p->start_test.tv_usec;
-            //ALOGD("start_ime: need time: %d us, fd:%d",total_time, p->fd);
+            //ALOGD("start_ime: need time: %d us, frame num:%d, fd:%d",total_time, p->total_encode_frame, p->fd);
             p->total_encode_time +=total_time;
         }
-        p->total_encode_frame++;
     }
     return ret;
 }
@@ -306,8 +393,8 @@ static AMVEnc_Status start_intra(fast_enc_drv_t* p, unsigned char* outptr,int* d
 {
     AMVEnc_Status ret = AMVENC_FAIL;
     uint32_t status;
-    uint32_t size = 0;
-    uint32_t control_info[9];
+    uint32_t result[4];
+    uint32_t control_info[10];
     uint32_t total_time = 0;
     if(p->logtime)
         gettimeofday(&p->start_test, NULL);
@@ -319,8 +406,13 @@ static AMVEnc_Status start_intra(fast_enc_drv_t* p, unsigned char* outptr,int* d
     control_info[4] = (p->src.type == VMALLOC_BUFFER)?0:p->src.canvas;
     control_info[5] = p->src.framesize; //(16X3/2)
     control_info[6] = (p->fix_qp >= 0)?p->fix_qp:p->quant;
-    control_info[7] = (p->reencode == true)?(AMVENC_FLUSH_FLAG_OUTPUT):(AMVENC_FLUSH_FLAG_INPUT|AMVENC_FLUSH_FLAG_OUTPUT); // flush op;
+    control_info[7] = AMVENC_FLUSH_FLAG_INPUT|AMVENC_FLUSH_FLAG_OUTPUT; // flush op;
+    control_info[7] |=  AMVENC_FLUSH_FLAG_INTRA_INFO;
     control_info[8] = ENCODE_DONE_TIMEOUT; // timeout op;
+    if (p->total_encode_frame > 0)
+        control_info[9] = p->nr_mode; // nr mode 0: disable 1: snr 2: tnr  2: 3dnr
+    else
+        control_info[9] = (p->nr_mode > 0)?1:0;
     ioctl(p->fd, FASTENC_AVC_IOC_NEW_CMD, &control_info[0]);
 
     if(encode_poll(p->fd, -1)<=0){
@@ -331,12 +423,16 @@ static AMVEnc_Status start_intra(fast_enc_drv_t* p, unsigned char* outptr,int* d
     ioctl(p->fd, FASTENC_AVC_IOC_GET_STAGE, &status);
     ret = AMVENC_FAIL;
     if(status == ENCODER_IDR_DONE){
-        ioctl(p->fd, FASTENC_AVC_IOC_GET_OUTPUT_SIZE, &size);
-        if((size < p->output_buf.size)&&(size>0)){
-            memcpy(outptr,p->output_buf.addr,size);
-            *datalen  = size;
+        ioctl(p->fd, FASTENC_AVC_IOC_GET_OUTPUT_SIZE, &result[0]);
+        if((result[0] < p->output_buf.size)&&(result[0]>0)){
+            memcpy(outptr,p->output_buf.addr,result[0]);
+            *datalen  = result[0];
+            p->me_weight = result[1];
+            p->i4_weight = result[2];
+            p->i16_weight = result[3];
+            Parser_DumpInfo(p);
             ret = AMVENC_NEW_IDR;
-            //ALOGV("start_intra: done size: %d, fd:%d",size, p->fd);
+            //ALOGV("start_intra: done size: %d, fd:%d", result[0], p->fd);
         }
     }else{
         //ALOGE("start_intra: encode timeout, status:%d, fd:%d",status, p->fd);
@@ -344,23 +440,14 @@ static AMVEnc_Status start_intra(fast_enc_drv_t* p, unsigned char* outptr,int* d
     }
 
     if(ret == AMVENC_NEW_IDR){
-        if(p->reencode)
-            p->reencode_frame++;
-        else
-            p->total_encode_frame++;
+        p->total_encode_frame++;
         if(p->logtime){
             gettimeofday(&p->end_test, NULL);
             total_time = (p->end_test.tv_sec - p->start_test.tv_sec)*1000000 + p->end_test.tv_usec -p->start_test.tv_usec;
-            if(p->reencode){
-                p->total_encode_time +=total_time;
-                //ALOGD("re-encode intra:%d need time: %d us, fd:%d",p->reencode_frame,total_time, p->fd);
-            }else{
-                p->total_encode_time +=total_time;
-                //ALOGD("start_intra: need time: %d us, fd:%d",total_time, p->fd);
-            }
+            p->total_encode_time +=total_time;
+            //ALOGD("start_intra: need time: %d us, frame num:%d, fd:%d",total_time, p->total_encode_frame, p->fd);
         }
     }
-    p->reencode = false;
     return ret;
 }
 
@@ -421,6 +508,7 @@ void* InitFastEncode(int fd, amvenc_initpara_t* init_para)
     p->pps_len = 0;
     p->gotPPS = false;
     p->fix_qp = -1;
+    p->nr_mode = 3;
 
     buff_info[0] = mode;
     buff_info[1] = p->src.mb_height;
@@ -429,6 +517,14 @@ void* InitFastEncode(int fd, amvenc_initpara_t* init_para)
     ret = ioctl(p->fd, FASTENC_AVC_IOC_CONFIG_INIT,&buff_info[0]);
     if(ret){
         //ALOGE("InitM8Encode config init fai, fd:%dl", p->fd);
+        munmap(p->mmap_buff.addr ,p->mmap_buff.size);
+        free(p);
+        return NULL;
+    }
+
+    p->mb_info = (mb_t *)malloc(p->src.mbsize * sizeof(mb_t));
+    if(p->mb_info == NULL){
+        //ALOGE("ALLOC mb info memory failed. fd:%d",p->fd);
         munmap(p->mmap_buff.addr ,p->mmap_buff.size);
         free(p);
         return NULL;
@@ -448,14 +544,12 @@ void* InitFastEncode(int fd, amvenc_initpara_t* init_para)
     p->ref_buf_uv[1].size = buff_info[10];
     p->output_buf.addr = p->mmap_buff.addr +buff_info[11] ;
     p->output_buf.size = buff_info[12];
-
-
+    p->dump_buf.addr = p->mmap_buff.addr +buff_info[13] ;
+    p->dump_buf.size = buff_info[14];
 
     p->mCancel = false;
     p->total_encode_frame  = 0;
     p->total_encode_time = 0;
-    p->reencode = false;
-    p->reencode_frame = 0;
     {
         //char prop[PROPERTY_VALUE_MAX];
         //int value = 0;        
@@ -478,6 +572,15 @@ void* InitFastEncode(int fd, amvenc_initpara_t* init_para)
         //        //ALOGD("Enable fix qp mode: %d. fd:%d", p->fix_qp, p->fd);
         //    }
         //}
+        //value = -1;
+        //memset(prop,0,sizeof(prop));        
+        //if(property_get("hw.encoder.nr_mode", prop, NULL) > 0){            
+        //    sscanf(prop,"%d",&value);
+        //    if((value>=0)&&(value<=3)){
+        //        p->nr_mode = value;
+        //        //ALOGD("Set Nr Mode as %d. fd:%d", p->nr_mode, p->fd);
+        //    }
+        //}
     }
     return (void *)p;
 }
@@ -494,15 +597,9 @@ AMVEnc_Status FastEncodeInitFrame(void *dev, ulong *yuv, AMVEncBufferType type, 
     if(p->logtime)
         gettimeofday(&p->start_test, NULL);
 
-    if(p->reencode){
-        //ALOGE("M8VEncodeInitFrame , re-encode fail, fd:%d", p->fd);
-        return AMVENC_FAIL;
-    }
-
     set_input(p, yuv,p->enc_width, p->enc_height, type,fmt);
 
     p->IDRframe =IDRframe;
-    p->reencode = false;
     if(p->IDRframe){
         ret = AMVENC_NEW_IDR;
     }else{
@@ -522,7 +619,7 @@ AMVEnc_Status FastEncodeSPS_PPS(void* dev, unsigned char* outptr,int* datalen)
     fast_enc_drv_t* p = (fast_enc_drv_t*)dev;
     AMVEnc_Status ret = AMVENC_FAIL;
     uint32_t status;
-    uint32_t size = 0;
+    uint32_t result[4];
     uint32_t control_info[5];
 
     control_info[0] = ENCODER_SEQUENCE; 
@@ -542,9 +639,9 @@ AMVEnc_Status FastEncodeSPS_PPS(void* dev, unsigned char* outptr,int* datalen)
     //ALOGV("FastEncodeSPS_PPS status:%d, fd:%d", status, p->fd);
     ret = AMVENC_FAIL;
     if(status == ENCODER_PICTURE_DONE){
-        ioctl(p->fd, FASTENC_AVC_IOC_GET_OUTPUT_SIZE, &size);
-        p->sps_len = (size >>16)&0xffff;
-        p->pps_len = size & 0xffff;
+        ioctl(p->fd, FASTENC_AVC_IOC_GET_OUTPUT_SIZE, &result[0]);
+        p->sps_len = (result[0] >>16)&0xffff;
+        p->pps_len = result[0] & 0xffff;
         if(((p->sps_len+ p->pps_len)< p->output_buf.size)&&(p->sps_len>0)&&(p->pps_len>0)){
             p->gotSPS = true;
             p->gotPPS= true;
@@ -566,7 +663,7 @@ AMVEnc_Status FastEncodeSlice(void* dev, unsigned char* outptr,int* datalen, boo
     if((!p)||(!outptr)||(!datalen))
         return ret;
 
-    if(p->IDRframe || p->reencode){
+    if(p->IDRframe){
         ret = start_intra(p,outptr,datalen);
     }else{
         ret = start_ime(p,outptr,datalen);
@@ -594,12 +691,16 @@ void UnInitFastEncode(void* dev)
         return;
 
     p->mCancel = true;
+
+    if(p->mb_info)
+        free(p->mb_info);
+
     if(p->mmap_buff.addr)
         munmap(p->mmap_buff.addr ,p->mmap_buff.size);
 
     if(p->logtime)
-        //ALOGD("total_encode_frame: %d,  re-encode intra:%d, total_encode_time: %d ms, fd:%d",
-        //            p->total_encode_frame,p->reencode_frame,p->total_encode_time/1000, p->fd);
+        //ALOGD("total_encode_frame: %d, total_encode_time: %d ms, fd:%d",
+        //            p->total_encode_frame, p->total_encode_time/1000, p->fd);
     free(p);
     return;
 }

@@ -36,9 +36,6 @@ typedef struct FastEncRateControl_s
     int     reaction_ratio;
     double  actual_quant;
     double  average_qp;
-    bool    next_IDR;
-    bool    reencode;
-    int		reencode_cnt;
     int 	last_IDR_bits;
     int 	last_pframe_bits;
     double	actual_Qstep;

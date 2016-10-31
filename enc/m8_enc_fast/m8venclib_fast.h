@@ -28,6 +28,38 @@
 #define UCODE_MODE_FULL 0
 #define UCODE_MODE_SW_MIX 1
 
+typedef struct{
+    short mvx;
+    short mvy;
+}mv_t;
+
+typedef struct{
+    unsigned char imode;
+    unsigned char LPred[16];
+    unsigned char CPred;
+    unsigned short sad;
+}intra_info_t;
+
+typedef struct{
+    mv_t mv[16];
+    unsigned short sad;
+}inter_info_t;
+
+typedef struct{
+    uint32_t mbx;
+    uint32_t mby;
+    unsigned char mb_type;
+
+    unsigned char quant;
+    unsigned char cbp;
+    unsigned short bits;
+
+    intra_info_t intra;
+    inter_info_t inter;
+
+    int final_sad;
+}mb_t;
+
 typedef struct
 {
     int pix_width;
@@ -60,6 +92,7 @@ typedef struct
     uint32_t quant;
 
     int fix_qp;
+    int nr_mode;
 
     bool gotSPS;
     uint32_t sps_len;
@@ -70,14 +103,19 @@ typedef struct
     uint32_t total_encode_time;
 
     fast_input_t src;
+    uint32_t me_weight;
+    uint32_t i4_weight;
+    uint32_t i16_weight;
 
     fast_buff_t mmap_buff;
     fast_buff_t input_buf;
     fast_buff_t ref_buf_y[2];
     fast_buff_t ref_buf_uv[2];
     fast_buff_t output_buf;
-    uint32_t reencode_frame;
-    bool reencode;
+    fast_buff_t dump_buf;
+
+    mb_t* mb_info;
+
     bool logtime;
     struct timeval start_test;
     struct timeval end_test;

@@ -9,7 +9,7 @@ endif
 
 TARGET= libvpcodec.a
  
-CODEOBJECT = AML_HWEncoder.o enc_api.o rate_control_m8_fast.o m8venclib_fast.o libvpcodec.o
+CODEOBJECT = AML_HWEncoder.o enc_api.o rate_control_m8_fast.o m8venclib_fast.o parser.o libvpcodec.o
 
 #libvpcodec.so: $(CODEOBJECT)
 #	$(CC) $(CFLAGS) $(CODEOBJECT) -o $(TARGET)
@@ -53,8 +53,8 @@ m8venclib_fast.o: enc/m8_enc_fast/m8venclib_fast.cpp enc/m8_enc_fast/m8venclib_f
 #rate_control_gx_fast.o: enc/gx_enc_fast/rate_control_gx_fast.cpp enc/gx_enc_fast/rate_control_gx_fast.h
 #	$(CC) $(CFLAGS)  -c $<
 #
-#parser.o: enc/gx_enc_fast/parser.cpp enc/gx_enc_fast/parser.h
-#	$(CC) $(CFLAGS)  -c $<
+parser.o: enc/m8_enc_fast/parser.cpp enc/m8_enc_fast/parser.h
+	$(CC) $(CFLAGS)  -c $<
 #
 #pred.o: enc/intra_search/pred.cpp enc/intra_search/pred.h
 #	$(CC) $(CFLAGS)  -c $<
